@@ -1,6 +1,7 @@
 package models
 
 import (
+	"encoding/json"
 	"time"
 
 	"gorm.io/gorm"
@@ -20,4 +21,17 @@ type Order struct {
 	Descriptiom string    `json:"description"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
+	Supplier    Supplier  `gorm:"foreignKey:SupplierID;references:ID"`
+}
+
+// Custom JSON Marshal for OrderDate
+func (o Order) MarshalJSON() ([]byte, error) {
+	type Alias Order // Create an alias to avoid recursion
+	return json.Marshal(&struct {
+		OrderDate string `json:"order_date"`
+		Alias
+	}{
+		OrderDate: o.OrderDate.Format("2006-01-02 03:04 PM"),
+		Alias:     (Alias)(o),
+	})
 }
