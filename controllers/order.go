@@ -125,64 +125,101 @@ func DeleteOrder(c *fiber.Ctx) error {
 	})
 }
 func ConfirmOrder(c *fiber.Ctx) error {
-    var requestBody struct {
-        SupplierID uint `json:"supplier_id"` // supplier_id from the request body
-    }
-    
-    // Parse the request body to get the supplier_id
-    if err := c.BodyParser(&requestBody); err != nil {
-        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid input"})
-    }
+	var requestBody struct {
+		SupplierID uint `json:"supplier_id"` // supplier_id from the request body
+	}
 
-    id := c.Params("id") // Get the order ID from the URL parameters
-    var order models.Order
+	// Parse the request body to get the supplier_id
+	if err := c.BodyParser(&requestBody); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid input"})
+	}
 
-    // Find the order by ID
-    if err := database.DB.First(&order, id).Error; err != nil {
-        return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Order not found"})
-    }
+	id := c.Params("id") // Get the order ID from the URL parameters
+	var order models.Order
 
-    // Ensure the order is in "pending" status before confirmation
-    if order.Status != "pending" {
-        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Order already confirmed or completed"})
-    }
+	// Find the order by ID
+	if err := database.DB.First(&order, id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Order not found"})
+	}
 
-    // Check if the supplier is the one who created the order
-    if requestBody.SupplierID != order.SupplierID {
-        return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "You are not authorized to confirm this order"})
-    }
+	// Ensure the order is in "pending" status before confirmation
+	if order.Status != "pending" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Order already confirmed or completed"})
+	}
 
-    // Update the order status to "verified"
-    order.Status = "verified"
-    order.UpdatedAt = time.Now()
+	// Check if the supplier is the one who created the order
+	if requestBody.SupplierID != order.SupplierID {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "You are not authorized to confirm this order"})
+	}
 
-    // Save the updated order
-    if err := database.DB.Save(&order).Error; err != nil {
-        return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to confirm order"})
-    }
+	// Update the order status to "verified"
+	order.Status = "verified"
+	order.UpdatedAt = time.Now()
 
-    // Return the updated order
-    return c.JSON(order)
+	// Save the updated order
+	if err := database.DB.Save(&order).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to confirm order"})
+	}
+
+	// Return the updated order
+	return c.JSON(order)
 }
 
 func GetSupplierOrders(c *fiber.Ctx) error {
-    // Get the supplier_id from the URL parameters
-    supplierIDParam := c.Params("supplier_id")
-    
-    // Convert supplier_id to an integer (or uint)
-    supplierID, err := strconv.Atoi(supplierIDParam)
-    if err != nil {
-        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid supplier ID"})
-    }
+	// Get the supplier_id from the URL parameters
+	supplierIDParam := c.Params("supplier_id")
 
-    // Fetch orders related to the supplier_id from the database
-    var orders []models.Order
-    if err := database.DB.Where("supplier_id = ?", supplierID).Find(&orders).Error; err != nil {
-        return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch orders"})
-    }
+	// Convert supplier_id to an integer (or uint)
+	supplierID, err := strconv.Atoi(supplierIDParam)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid supplier ID"})
+	}
 
-    // Return the fetched orders
-    return c.JSON(orders)
+	// Fetch orders related to the supplier_id from the database
+	var orders []models.Order
+	if err := database.DB.Where("supplier_id = ?", supplierID).Find(&orders).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch orders"})
+	}
+
+	// Return the fetched orders
+	return c.JSON(orders)
 }
 
+func ConfirmOrders(c *fiber.Ctx) error {
+	supplierID := c.Locals("supplier_id").(uint)
+	id := c.Params("id")
 
+	var order models.Order
+	if err := database.DB.First(&order, id).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Order not found"})
+	}
+
+	if order.Status != "pending" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Order already confirmed or completed"})
+	}
+
+	if supplierID != order.SupplierID {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Unauthorized to confirm this order"})
+	}
+
+	order.Status = "verified"
+	order.UpdatedAt = time.Now()
+
+	if err := database.DB.Save(&order).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to confirm order"})
+	}
+
+	return c.JSON(order)
+}
+
+func GetSupplierOrder(c *fiber.Ctx) error {
+	supplierID := c.Locals("supplier_id").(uint)
+
+	// Fetch all orders for the given supplier
+	var orders []models.Order
+	if err := database.DB.Where("supplier_id = ?", supplierID).Find(&orders).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch orders"})
+	}
+
+	return c.JSON(orders)
+}

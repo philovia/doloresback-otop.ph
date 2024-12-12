@@ -33,15 +33,17 @@ func UserRoutes(app *fiber.App) {
 	supplierRoutes.Put("/:id", controllers.UpdateProduct)
 	supplierRoutes.Delete("/:id", controllers.DeleteProduct)
 	supplierRoutes.Get("/", controllers.GetSupplierProducts)
+	supplierRoutes.Get("/", controllers.GetMyProducts)
+	supplierRoutes.Post("/confirm/:id", controllers.ConfirmOrders)            //supplier will confirm the order from admin by order id
+	supplierRoutes.Get("/orders/:supplier_id", controllers.GetSupplierOrders) // with toke of the suppliers unique
 
 	// the supplier will confirmed the order from admin(NOT YET)
 	app.Put("/orders/:id/confirm", controllers.ConfirmOrder)
 	app.Get("/orders/:supplier_id", controllers.GetSupplierOrders)
-	app.Get("/suppliers/all_purchases", controllers.GetSupplierPurchaseCounts) // for addmin only with limit of 6 suppliers
-	app.Get("/suppliers/all_purchase", controllers.GetSupplierPurchaseCount) // all suppliers will get puschased
-	app.Get("/suppliers/purchases/:id", controllers.GetSupplierPurchasesByID) // for admin only
+	app.Get("/suppliers/all_purchases", controllers.GetSupplierPurchaseCounts)             // for addmin only with limit of 6 suppliers
+	app.Get("/suppliers/all_purchase", controllers.GetSupplierPurchaseCount)               // all suppliers will get puschased
+	app.Get("/suppliers/purchases/:id", controllers.GetSupplierPurchasesByID)              // for admin only
 	app.Get("/supplier/purchases", middleware.IsSupplier, controllers.GetMyTotalPurchases) // for suppliers
-
 
 	//Can Get Total Otop Products Stocks & Name(DONE)
 	app.Post("/api/otop/add_products", controllers.CreateOtopProduct) // create new otop products (USED)
@@ -56,9 +58,8 @@ func UserRoutes(app *fiber.App) {
 	app.Get("/api/otop/total_suppliers_product", controllers.GetSupplierProductCounts)                               // supplier and number of products
 	app.Get("/api/otop/total_amount_suppliers/:supplier_id/total_amount", controllers.GetTotalPurchasedBySupplierID) // total of every suppliers amount of purchased
 
-
-	app.Post("/api/otop/sold_items", controllers.RecordSoldItem) // makinng solds POS
-	app.Get("/api/otop/solds_products", controllers.GetAllSoldItems) // the total solds
+	app.Post("/api/otop/sold_items", controllers.RecordSoldItem)                           // makinng solds POS
+	app.Get("/api/otop/solds_products", controllers.GetAllSoldItems)                       // the total solds
 	app.Get("/api/otop/solds_products/:supplier_id", controllers.GetSoldItemsBySupplierID) // by supplier solds
 	// Order Management for the admin with supplier (DONE)
 	admin := app.Group("/order")

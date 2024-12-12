@@ -42,6 +42,7 @@ func UnifiedLogin(c *fiber.Ctx) error {
 		Password string `json:"password"`
 	}
 
+	// Parse the request body to get credentials
 	if err := c.BodyParser(&creds); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid login data"})
 	}
@@ -49,16 +50,23 @@ func UnifiedLogin(c *fiber.Ctx) error {
 	// Check if the email exists in the supplier table first
 	var storedSupplier models.Supplier
 	if err := database.DB.Where("email = ?", creds.Email).First(&storedSupplier).Error; err == nil {
+		// If the supplier exists, check if the password matches
 		if storedSupplier.Password != creds.Password {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials"})
 		}
 
+		// Generate token for the supplier
 		token, err := utils.GenerateToken(storedSupplier.StoreName, "supplier", storedSupplier.ID, storedSupplier.ID)
 		if err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Error generating token"})
 		}
 
-		return c.JSON(fiber.Map{"token": token, "role": "supplier"})
+		// Return the token, role, and supplier_id for the supplier
+		return c.JSON(fiber.Map{
+			"token":       token,
+			"role":        "supplier",
+			"supplier_id": storedSupplier.ID, // Add supplier ID to the response
+		})
 	}
 
 	// If not found in the supplier table, check in the user table
@@ -67,16 +75,23 @@ func UnifiedLogin(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "User not found"})
 	}
 
+	// If the password does not match for the user
 	if storedUser.Password != creds.Password {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials"})
 	}
 
+	// Generate token for the user
 	token, err := utils.GenerateToken(storedUser.UserName, storedUser.Role, storedUser.ID, storedSupplier.ID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Error generating token"})
 	}
 
-	return c.JSON(fiber.Map{"token": token, "role": storedUser.Role})
+	// Return the token, role, and supplier_id (optional for non-supplier users)
+	return c.JSON(fiber.Map{
+		"token":       token,
+		"role":        storedUser.Role,
+		"supplier_id": storedSupplier.ID, // Return the supplier_id in case it's available
+	})
 }
 
 func Logout(c *fiber.Ctx) error {
