@@ -11,7 +11,7 @@ type OtopProducts struct {
 	gorm.Model
 	ID               uint     `gorm:"primaryKey;autoIncrement"` // Remove 'unsigned' here
 	Name             string   `json:"name"`
-	Description      string   `json:"description"`
+	Description      string   `json:"description" gorm:"not null;unique"`
 	Price            float64  `json:"price"`
 	Quantity         int64    `json:"quantity"`
 	Category         string   `json:"category"`

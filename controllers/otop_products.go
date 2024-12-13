@@ -23,6 +23,19 @@ func CreateOtopProduct(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid product data"})
 	}
 
+	// Validate description
+	if otopProduct.Description == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Description is required"})
+	}
+
+	// Check for duplicate description
+	var existingProduct models.OtopProducts
+	if err := database.DB.Where("description = ?", otopProduct.Description).First(&existingProduct).Error; err == nil {
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "Description must be unique"})
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Database error"})
+	}
+
 	// Fetch the supplier by store_name
 	var supplier models.Supplier
 	if err := database.DB.Where("store_name = ?", otopProduct.StoreName).First(&supplier).Error; err != nil {
@@ -288,8 +301,7 @@ func RecordSoldItem(c *fiber.Ctx) error {
 	}
 
 	// Calculate the total amount for the sold item
-soldItem.TotalAmount = float64(soldItem.QuantitySold) * otopProduct.Price
-
+	soldItem.TotalAmount = float64(soldItem.QuantitySold) * otopProduct.Price
 
 	// Update the product quantity
 	otopProduct.Quantity -= soldItem.QuantitySold

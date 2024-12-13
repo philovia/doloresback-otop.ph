@@ -10,16 +10,14 @@ import (
 type Product struct {
 	gorm.Model
 	ID               uint    `gorm:"primaryKey" json:"id"`
-	SequentialNumber string  `json:"sequential_number"` 
+	SequentialNumber string  `json:"sequential_number"`
 	Name             string  `json:"name"`
 	Description      string  `json:"description"`
 	Price            float64 `json:"price"`
 	Quantity         int64   `json:"quantity"`
 	SupplierID       uint    `json:"supplier_id"`
 	Category         string  `json:"category"`
-
 }
-
 
 func (p *Product) BeforeCreate(tx *gorm.DB) (err error) {
 	// Validate the category field
@@ -28,7 +26,7 @@ func (p *Product) BeforeCreate(tx *gorm.DB) (err error) {
 	}
 
 	// Generate custom ID starting at 10000
-	var maxID *uint 
+	var maxID *uint
 	result := tx.Table("products").Select("MAX(id)").Scan(&maxID)
 	if result.Error != nil {
 		return result.Error
@@ -41,7 +39,7 @@ func (p *Product) BeforeCreate(tx *gorm.DB) (err error) {
 	}
 
 	// Generate Sequential Number (e.g., "P-10001", "P-10002", etc.)
-	var maxSequentialNumber *int64 
+	var maxSequentialNumber *int64
 	result = tx.Table("products").Select("MAX(CAST(SUBSTRING(sequential_number, 3) AS BIGINT))").Scan(&maxSequentialNumber)
 	if result.Error != nil {
 		return result.Error
