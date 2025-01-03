@@ -29,7 +29,7 @@ func UserRoutes(app *fiber.App) {
 	supplierRoutes := app.Group("/products", middleware.IsSupplier, middleware.JWTProtected)
 	supplierRoutes.Post("/", controllers.AddProduct)
 	supplierRoutes.Get("/", controllers.GetProducts)
-	supplierRoutes.Get("/:id", controllers.GetProductByName) // search by name
+	supplierRoutes.Get("/:supplier_id", controllers.GetProductByName) // search by name
 	supplierRoutes.Put("/:id", controllers.UpdateProduct)
 	supplierRoutes.Delete("/:id", controllers.DeleteProduct)
 	supplierRoutes.Get("/", controllers.GetSupplierProducts)
@@ -61,6 +61,7 @@ func UserRoutes(app *fiber.App) {
 	app.Post("/api/otop/sold_items", controllers.RecordSoldItem)                           // makinng solds POS
 	app.Get("/api/otop/solds_products", controllers.GetAllSoldItems)                       // the total solds
 	app.Get("/api/otop/solds_products/:supplier_id", controllers.GetSoldItemsBySupplierID) // by supplier solds
+	app.Post("/api/otop/add_cart", controllers.AddToCartHandler)
 	// Order Management for the admin with supplier (DONE)
 	admin := app.Group("/order")
 	admin.Post("/", controllers.CreateOrder)

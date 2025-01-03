@@ -280,10 +280,10 @@ func GetTotalPurchasedBySupplierID(c *fiber.Ctx) error {
 }
 
 // function for POS
-
 func RecordSoldItem(c *fiber.Ctx) error {
 	var soldItem models.SoldItems
 	var otopProduct models.OtopProducts
+	var supplier models.Supplier
 
 	// Parse the request body
 	if err := c.BodyParser(&soldItem); err != nil {
@@ -293,6 +293,11 @@ func RecordSoldItem(c *fiber.Ctx) error {
 	// Fetch the product being sold
 	if err := database.DB.First(&otopProduct, soldItem.ProductID).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Product not found"})
+	}
+
+	// Fetch the supplier information (assuming the product has a SupplierID)
+	if err := database.DB.First(&supplier, otopProduct.SupplierID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Supplier not found"})
 	}
 
 	// Check if sufficient quantity is available
@@ -314,8 +319,14 @@ func RecordSoldItem(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to record sold item"})
 	}
 
-	// Return the sold item data
-	return c.Status(fiber.StatusCreated).JSON(soldItem)
+	// Include the supplier information in the response
+	response := map[string]interface{}{
+		"soldItem": soldItem,
+		"supplier": supplier,
+	}
+
+	// Return the sold item data along with supplier details
+	return c.Status(fiber.StatusCreated).JSON(response)
 }
 
 func GetAllSoldItems(c *fiber.Ctx) error {
@@ -337,4 +348,54 @@ func GetSoldItemsBySupplierID(c *fiber.Ctx) error {
 	}
 
 	return c.Status(fiber.StatusOK).JSON(soldItems)
+}
+
+func AddToCartHandler(c *fiber.Ctx) error {
+	// Define the request body structure
+	type AddToCartRequest struct {
+		ProductID  int `json:"productID"`
+		SupplierID int `json:"supplierID"`
+		Quantity   int `json:"quantity"`
+	}
+
+	// Parse the request body into AddToCartRequest struct
+	var req AddToCartRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request data"})
+	}
+
+	// Check if product ID and supplier ID are valid
+	if req.ProductID == 0 || req.SupplierID == 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fmt.Sprintf("Invalid product or supplier ID: Product ID: %d, Supplier ID: %d", req.ProductID, req.SupplierID),
+		})
+	}
+
+	// Retrieve product by ID
+	var otopProduct models.OtopProducts
+	productResult := database.DB.First(&otopProduct, req.ProductID)
+	if productResult.Error != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Product not found"})
+	}
+
+	// Retrieve supplier by ID
+	var supplier models.Supplier
+	supplierResult := database.DB.First(&supplier, req.SupplierID)
+	if supplierResult.Error != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Supplier not found"})
+	}
+
+	// Further validation (optional)
+	if otopProduct.SupplierID != supplier.ID {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fmt.Sprintf("Product and supplier mismatch: Product SupplierID: %d, Supplier ID: %d", otopProduct.SupplierID, supplier.ID),
+		})
+	}
+
+	// Logic to add to cart (this part can be customized as needed)
+	// For example: Add the product to the user's cart in the database
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Item added to cart successfully",
+	})
 }

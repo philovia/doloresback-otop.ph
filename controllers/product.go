@@ -4,8 +4,10 @@ import (
 	// "errors"
 	"fmt"
 	"log"
-	"net/url"
-	"strings"
+
+	// "net/url"
+	"strconv"
+	// "strings"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v4"
@@ -60,7 +62,6 @@ func AddProduct(c *fiber.Ctx) error {
 
 	return c.Status(fiber.StatusCreated).JSON(product)
 }
-
 
 func GetProducts(c *fiber.Ctx) error {
 	var products []models.Product
@@ -142,28 +143,63 @@ func DeleteProduct(c *fiber.Ctx) error {
 }
 
 func GetProductByName(c *fiber.Ctx) error {
-	Name := c.Params("id")
-
-	log.Println("Looking for product with name:", Name)
-
-	decodedName, err := url.QueryUnescape(Name)
+	supplierIDParam := c.Params("supplier_id")
+	supplierID, err := strconv.ParseUint(supplierIDParam, 10, 32)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid product name"})
+		log.Printf("Invalid supplier ID: %s", supplierIDParam)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid supplier ID"})
 	}
-	Name = strings.TrimSpace(decodedName)
 
-	var product models.Product
+	log.Printf("Fetching products for Supplier ID: %d", supplierID)
 
-	if err := database.DB.Where("LOWER(name) = LOWER(?)", Name).First(&product).Error; err != nil {
-		log.Println("Error fetching product:", err)
+	// Verify token and claims
+	token := c.Locals("user").(*jwt.Token)
+	claims := token.Claims.(jwt.MapClaims)
+
+	tokenSupplierID, ok := claims["supplier_id"].(float64)
+	if !ok || uint(supplierID) != uint(tokenSupplierID) {
+		log.Printf("Token supplier ID mismatch: %v, param supplier ID: %d", tokenSupplierID, supplierID)
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized access to supplier data"})
+	}
+
+	// Fetch products for the supplier
+	var products []models.Product
+	if err := database.DB.Where("supplier_id = ?", uint(supplierID)).Find(&products).Error; err != nil {
+		log.Printf("Error fetching products for supplier %d: %v", supplierID, err)
 		if err == gorm.ErrRecordNotFound {
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Product not found"})
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "No products found for the supplier"})
 		}
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch product"})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch products"})
 	}
 
-	return c.JSON(product)
+	log.Printf("Products fetched for Supplier ID %d: %+v", supplierID, products)
+
+	return c.JSON(products)
 }
+
+// func GetProductByName(c *fiber.Ctx) error {
+// 	Name := c.Params("id")
+
+// 	log.Println("Looking for product with name:", Name)
+
+// 	decodedName, err := url.QueryUnescape(Name)
+// 	if err != nil {
+// 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid product name"})
+// 	}
+// 	Name = strings.TrimSpace(decodedName)
+
+// 	var product models.Product
+
+// 	if err := database.DB.Where("LOWER(name) = LOWER(?)", Name).First(&product).Error; err != nil {
+// 		log.Println("Error fetching product:", err)
+// 		if err == gorm.ErrRecordNotFound {
+// 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Product not found"})
+// 		}
+// 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch product"})
+// 	}
+
+// 	return c.JSON(product)
+// }
 
 func GetTotalQuantity(c *fiber.Ctx) error {
 	log.Println("Received request to calculate total quantity of products")
@@ -190,31 +226,29 @@ func GetProductsByStore(c *fiber.Ctx) error {
 	return c.JSON(products)
 }
 
-
 func GetSupplierProducts(c *fiber.Ctx) error {
-    // Extract the token information from the context
-    userToken := c.Locals("supplier").(*jwt.Token)
-    claims := userToken.Claims.(jwt.MapClaims)
+	// Extract the token information from the context
+	userToken := c.Locals("supplier").(*jwt.Token)
+	claims := userToken.Claims.(jwt.MapClaims)
 
-    // Extract supplier ID from the token claims
-    supplierID := uint(claims["id"].(float64))
-    log.Printf("Fetching products for Supplier ID (from token): %d", supplierID)
+	// Extract supplier ID from the token claims
+	supplierID := uint(claims["id"].(float64))
+	log.Printf("Fetching products for Supplier ID (from token): %d", supplierID)
 
-    // Query the database for products belonging to this supplier
-    var products []models.Product
-    if err := database.DB.Where("supplier_id = ?", supplierID).Find(&products).Error; err != nil {
-        log.Printf("Query error: %v", err)
-        return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch products"})
-    }
+	// Query the database for products belonging to this supplier
+	var products []models.Product
+	if err := database.DB.Where("supplier_id = ?", supplierID).Find(&products).Error; err != nil {
+		log.Printf("Query error: %v", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to fetch products"})
+	}
 
-    // If no products are found, return a 404 response
-    if len(products) == 0 {
-        log.Printf("No products found for Supplier ID: %d", supplierID)
-        return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "No products found for this supplier"})
-    }
+	// If no products are found, return a 404 response
+	if len(products) == 0 {
+		log.Printf("No products found for Supplier ID: %d", supplierID)
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "No products found for this supplier"})
+	}
 
-    // Return the list of products as JSON
-    log.Printf("Found %d products for Supplier ID: %d", len(products), supplierID)
-    return c.JSON(products)
+	// Return the list of products as JSON
+	log.Printf("Found %d products for Supplier ID: %d", len(products), supplierID)
+	return c.JSON(products)
 }
-
