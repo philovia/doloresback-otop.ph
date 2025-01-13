@@ -399,3 +399,125 @@ func AddToCartHandler(c *fiber.Ctx) error {
 		"message": "Item added to cart successfully",
 	})
 }
+
+func POSController(c *fiber.Ctx) error {
+	type CartItem struct {
+		ProductID uint    `json:"product_id"`
+		Name      string  `json:"name"`
+		Quantity  int64   `json:"quantity"`
+		Price     float64 `json:"price"`
+		Total     float64 `json:"total"`
+	}
+
+	type CheckoutRequest struct {
+		Items    []CartItem `json:"items"`
+		Received float64    `json:"received"`
+		Total    float64    `json:"total"`
+		Change   float64    `json:"change"`
+	}
+
+	var products []models.OtopProducts
+	search := c.Query("search", "")
+
+	// Fetch products along with supplier information
+	if search != "" {
+		database.DB.Preload("Supplier").Where("name LIKE ?", "%"+search+"%").Find(&products)
+	} else {
+		database.DB.Preload("Supplier").Find(&products)
+	}
+
+	// Return available products
+	if c.Method() == fiber.MethodGet {
+		return c.JSON(products)
+	}
+
+	// Handle checkout request
+	var request CheckoutRequest
+	if err := c.BodyParser(&request); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid checkout data"})
+	}
+
+	// Validate received amount
+	if request.Received < request.Total {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Received amount is less than the total"})
+	}
+
+	// Process the transaction
+	var supplierIDs = make(map[uint]bool) // To store unique supplier IDs
+	var supplierID uint
+	for _, item := range request.Items {
+		var product models.OtopProducts
+		if err := database.DB.First(&product, item.ProductID).Error; err != nil {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": fmt.Sprintf("Product ID %d not found", item.ProductID)})
+		}
+
+		// Check stock
+		if product.Quantity < item.Quantity {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": fmt.Sprintf("Insufficient stock for product %s", product.Name)})
+		}
+
+		// Deduct stock
+		product.Quantity -= item.Quantity
+		if err := database.DB.Save(&product).Error; err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update product stock"})
+		}
+
+		// Add supplierID to the map if it exists (to ensure uniqueness)
+		if product.SupplierID > 0 {
+			supplierIDs[product.SupplierID] = true
+			// Set the supplier ID for the transaction (if not already set)
+			if supplierID == 0 {
+				supplierID = product.SupplierID
+			}
+		}
+	}
+
+	// Ensure there's a valid supplier ID before proceeding
+	if supplierID == 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "No valid supplier found for the transaction"})
+	}
+
+	// Create transaction
+	transaction := models.Transaction{
+		Total:      request.Total,
+		Received:   request.Received,
+		Change:     request.Change,
+		CreatedAt:  time.Now(),
+		SupplierID: supplierID, // Link supplier directly to the transaction
+	}
+
+	// Insert the transaction into the database
+	if err := database.DB.Create(&transaction).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create transaction"})
+	}
+
+	// Insert the unique supplier IDs linked to the transaction (using TransactionSupplier)
+	for supplierID := range supplierIDs {
+		transactionSupplier := models.TransactionSupplier{
+			TransactionID: transaction.ID,
+			SupplierID:    supplierID,
+		}
+		if err := database.DB.Create(&transactionSupplier).Error; err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to link suppliers to transaction"})
+		}
+	}
+
+	// Save transaction items
+	for _, item := range request.Items {
+		transactionItem := models.TransactionItem{
+			TransactionID: transaction.ID,
+			ProductID:     item.ProductID,
+			Quantity:      item.Quantity,
+			Price:         item.Price,
+			Total:         item.Total,
+		}
+		if err := database.DB.Create(&transactionItem).Error; err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save transaction items"})
+		}
+	}
+
+	return c.JSON(fiber.Map{
+		"message":        "Transaction completed successfully",
+		"transaction_id": transaction.ID,
+	})
+}

@@ -32,5 +32,6 @@ func SetupDatabase() {
 
 	log.Println("Successfully connected to PostgreSQL using GORM")
 
-	DB.AutoMigrate(&models.Product{}, &models.User{}, &models.Supplier{}, &models.OtopProducts{}, &models.SoldItems{})
+	DB.AutoMigrate(&models.Product{}, &models.User{}, &models.Supplier{}, &models.OtopProducts{},
+		&models.SoldItems{}, &models.Transaction{}, &models.TransactionItem{}, &models.TransactionSupplier{})
 }

@@ -75,4 +75,5 @@ func UserRoutes(app *fiber.App) {
 	app.Get("/api/products", controllers.GetProducts)
 	app.Get("/api/products/supplier/:supplier_id", controllers.GetProductsByStore)
 
+	app.Post("/api/otop/POS", controllers.POSController)
 }
