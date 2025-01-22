@@ -15,7 +15,7 @@ type OtopProducts struct {
 	Price            float64  `json:"price"`
 	Quantity         int64    `json:"quantity"`
 	Category         string   `json:"category"`
-	SupplierID       uint     `gorm:"not null"`
+	SupplierID       uint     `gorm:"supplier_id"`
 	Supplier         Supplier `gorm:"foreignKey:SupplierID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;" json:"supplier"`
 	StoreName        string   `json:"store_name"`
 	SequentialNumber string   `json:"sequential_number"`

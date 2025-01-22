@@ -1,18 +1,28 @@
 package controllers
 
 import (
+	// "fmt"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/m/database"
 	"github.com/m/models"
 	"github.com/m/utils"
+	"gopkg.in/gomail.v2"
+	// "golang.org/x/crypto/bcrypt"
+	// "gopkg.in/gomail.v2"
 )
 
 func Register(c *fiber.Ctx) error {
 	var user models.User
 	if err := c.BodyParser(&user); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid user data"})
+	}
+
+	// Check if the email is already registered
+	var existingUser models.User
+	if err := database.DB.Where("username = ?", user.UserName).First(&existingUser).Error; err == nil {
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "Email is already registered"})
 	}
 
 	// Check if the role is either "admin" or "cashier"
@@ -28,14 +38,27 @@ func Register(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Cashier username must end with '_cashier'"})
 	}
 
-	// Save user to the database
+	// Save the user to the database
 	if err := database.DB.Create(&user).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Error saving user"})
 	}
 
+	// Send email notification
+	m := gomail.NewMessage()
+	m.SetHeader("From", "giemacazar@gmail.com")
+	m.SetHeader("To", user.Email)
+	m.SetHeader("Subject", "Registration Confirmation")
+	m.SetBody("text/plain", "Hello "+user.UserName+",\n\nYour registration was successful. Welcome to our platform!")
+
+	d := gomail.NewDialer("smtp.gmail.com", 587, "giemacazar@gmail.com", "wtga mbuz ooxc ymzs")
+
+	// Send the email
+	if err := d.DialAndSend(m); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Error sending registration email"})
+	}
+
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"message": "User registered successfully"})
 }
-
 func UnifiedLogin(c *fiber.Ctx) error {
 	var creds struct {
 		Email    string `json:"email"`
@@ -61,11 +84,15 @@ func UnifiedLogin(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Error generating token"})
 		}
 
-		// Return the token, role, and supplier_id for the supplier
+		// Return the token, role, and supplier details for the supplier
 		return c.JSON(fiber.Map{
-			"token":       token,
-			"role":        "supplier",
-			"supplier_id": storedSupplier.ID, // Add supplier ID to the response
+			"token":        token,
+			"role":         "supplier",
+			"supplier_id":  storedSupplier.ID,
+			"store_name":   storedSupplier.StoreName,
+			"phone_number": storedSupplier.PhoneNumber,
+			"addres":       storedSupplier.Address,
+			"id":           storedSupplier.ID,
 		})
 	}
 
@@ -81,16 +108,15 @@ func UnifiedLogin(c *fiber.Ctx) error {
 	}
 
 	// Generate token for the user
-	token, err := utils.GenerateToken(storedUser.UserName, storedUser.Role, storedUser.ID, storedSupplier.ID)
+	token, err := utils.GenerateToken(storedUser.UserName, storedUser.Role, storedUser.ID, 0)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Error generating token"})
 	}
 
-	// Return the token, role, and supplier_id (optional for non-supplier users)
+	// Return the token and role for the user
 	return c.JSON(fiber.Map{
-		"token":       token,
-		"role":        storedUser.Role,
-		"supplier_id": storedSupplier.ID, // Return the supplier_id in case it's available
+		"token": token,
+		"role":  storedUser.Role,
 	})
 }
 

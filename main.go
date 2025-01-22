@@ -20,11 +20,10 @@ func main() {
 		log.Fatalf("Could not auto-migrate supplier table: %v", err)
 	}
 
-
 	app := fiber.New()
 
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: "*",
+		AllowOrigins: "https://philovia.github.io",
 		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
 	}))
 

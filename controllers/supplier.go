@@ -1,23 +1,36 @@
 package controllers
 
 import (
+	// "fmt"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/m/database"
 	"github.com/m/models"
+
+	// "gopkg.in/gomail.v2"
+
+	// "gopkg.in/gomail.v2"
 	"gorm.io/gorm"
 )
 
 func CreateSupplier(c *fiber.Ctx) error {
 	var supplier models.Supplier
+	// Parse the supplier data from the request body
 	if err := c.BodyParser(&supplier); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 	}
 
+	// Save supplier to the database
 	if err := database.DB.Create(&supplier).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create supplier"})
 	}
+
+	// Return success response
 	return c.JSON(supplier)
 }
+
+// Register handles user registration and sends a notification email
+
 func GetSuppliers(c *fiber.Ctx) error {
 	var suppliers []models.Supplier
 	database.DB.Find(&suppliers)
@@ -111,107 +124,102 @@ func GetSupplierProductCounts(c *fiber.Ctx) error {
 	return c.JSON(results)
 }
 
-
-
 // with limit of suppliers
 func GetSupplierPurchaseCounts(c *fiber.Ctx) error {
-    type SupplierPurchaseCount struct {
-        StoreName     string `json:"store_name"`
-        PurchaseCount int64  `json:"purchase_count"`
-    }
+	type SupplierPurchaseCount struct {
+		StoreName     string `json:"store_name"`
+		PurchaseCount int64  `json:"purchase_count"`
+	}
 
-    var results []SupplierPurchaseCount
-    err := database.DB.Model(&models.Supplier{}).
-        Select("suppliers.store_name, COUNT(orders.id) as purchase_count").
-        Joins("LEFT JOIN orders ON orders.supplier_id = suppliers.id").
-        Group("suppliers.id").
-        Order("purchase_count DESC"). // Order by purchase count in descending order
-        Limit(6).                     // Limit to the top 6 results
-        Scan(&results).Error
+	var results []SupplierPurchaseCount
+	err := database.DB.Model(&models.Supplier{}).
+		Select("suppliers.store_name, COUNT(orders.id) as purchase_count").
+		Joins("LEFT JOIN orders ON orders.supplier_id = suppliers.id").
+		Group("suppliers.id").
+		Order("purchase_count DESC"). // Order by purchase count in descending order
+		Limit(6).                     // Limit to the top 6 results
+		Scan(&results).Error
 
-    if err != nil {
-        return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve supplier purchase counts"})
-    }
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve supplier purchase counts"})
+	}
 
-    return c.JSON(results)
+	return c.JSON(results)
 }
 
-
 func GetSupplierPurchaseCount(c *fiber.Ctx) error {
-    type SupplierPurchaseCount struct {
-        StoreName     string `json:"store_name"`
-        PurchaseCount int64  `json:"purchase_count"`
-    }
+	type SupplierPurchaseCount struct {
+		StoreName     string `json:"store_name"`
+		PurchaseCount int64  `json:"purchase_count"`
+	}
 
-    var results []SupplierPurchaseCount
-    err := database.DB.Model(&models.Supplier{}).
-        Select("suppliers.store_name, COUNT(orders.id) as purchase_count").
-        Joins("LEFT JOIN orders ON orders.supplier_id = suppliers.id").
-        Group("suppliers.id").
-        Scan(&results).Error
+	var results []SupplierPurchaseCount
+	err := database.DB.Model(&models.Supplier{}).
+		Select("suppliers.store_name, COUNT(orders.id) as purchase_count").
+		Joins("LEFT JOIN orders ON orders.supplier_id = suppliers.id").
+		Group("suppliers.id").
+		Scan(&results).Error
 
-    if err != nil {
-        return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve supplier purchase counts"})
-    }
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve supplier purchase counts"})
+	}
 
-    return c.JSON(results)
+	return c.JSON(results)
 }
 
 func GetSupplierPurchasesByID(c *fiber.Ctx) error {
-    type SupplierPurchaseCount struct {
-        StoreName     string `json:"store_name"`
-        Email         string `json:"email"`
-        PurchaseCount int64  `json:"purchase_count"`
-    }
+	type SupplierPurchaseCount struct {
+		StoreName     string `json:"store_name"`
+		Email         string `json:"email"`
+		PurchaseCount int64  `json:"purchase_count"`
+	}
 
-    supplierID := c.Params("id") // Get supplier ID from the URL parameter
-    var result SupplierPurchaseCount
+	supplierID := c.Params("id") // Get supplier ID from the URL parameter
+	var result SupplierPurchaseCount
 
-    err := database.DB.Model(&models.Supplier{}).
-        Select("suppliers.store_name, suppliers.email, COUNT(orders.id) as purchase_count").
-        Joins("LEFT JOIN orders ON orders.supplier_id = suppliers.id").
-        Where("suppliers.id = ?", supplierID).
-        Group("suppliers.id").
-        Scan(&result).Error
+	err := database.DB.Model(&models.Supplier{}).
+		Select("suppliers.store_name, suppliers.email, COUNT(orders.id) as purchase_count").
+		Joins("LEFT JOIN orders ON orders.supplier_id = suppliers.id").
+		Where("suppliers.id = ?", supplierID).
+		Group("suppliers.id").
+		Scan(&result).Error
 
-    if err != nil {
-        return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve purchase count for supplier"})
-    }
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve purchase count for supplier"})
+	}
 
-    // Check if the supplier exists
-    if result.StoreName == "" {
-        return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Supplier not found"})
-    }
+	// Check if the supplier exists
+	if result.StoreName == "" {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Supplier not found"})
+	}
 
-    return c.JSON(result)
+	return c.JSON(result)
 }
-
 
 func GetMyTotalPurchases(c *fiber.Ctx) error {
-    // Retrieve supplier_id from the middleware
-    supplierID, ok := c.Locals("supplier_id").(uint)
-    if !ok {
-        return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
-    }
+	// Retrieve supplier_id from the middleware
+	supplierID, ok := c.Locals("supplier_id").(uint)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized"})
+	}
 
-    var supplier models.Supplier
+	var supplier models.Supplier
 
-    // Query the database for the supplier's purchase count
-    err := database.DB.Model(&models.Supplier{}).
-        Where("id = ?", supplierID).
-        Select("purchased").
-        First(&supplier).Error
-    if err != nil {
-        if err == gorm.ErrRecordNotFound {
-            return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Supplier not found"})
-        }
-        return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve purchase data"})
-    }
+	// Query the database for the supplier's purchase count
+	err := database.DB.Model(&models.Supplier{}).
+		Where("id = ?", supplierID).
+		Select("purchased").
+		First(&supplier).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Supplier not found"})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to retrieve purchase data"})
+	}
 
-    // Return the result
-    return c.JSON(fiber.Map{
-        "supplier_id": supplierID,
-        "purchased":   supplier.Purchased,
-    })
+	// Return the result
+	return c.JSON(fiber.Map{
+		"supplier_id": supplierID,
+		"purchased":   supplier.Purchased,
+	})
 }
-
