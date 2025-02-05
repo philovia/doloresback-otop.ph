@@ -23,7 +23,7 @@ func main() {
 	app := fiber.New()
 
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: "https://philovia.github.io",
+		AllowOrigins: "*",
 		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
 	}))
 
@@ -34,5 +34,6 @@ func main() {
 		port = "8097"
 	}
 
-	log.Fatal(app.Listen(":" + port))
+	log.Printf("Server starting on port %s...", port)
+	log.Fatal(app.Listen("0.0.0.0:" + port)) // Bind to 0.0.0.0
 }

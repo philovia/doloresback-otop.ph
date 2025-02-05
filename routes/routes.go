@@ -46,9 +46,11 @@ func UserRoutes(app *fiber.App) {
 	app.Get("/supplier/purchases", middleware.IsSupplier, controllers.GetMyTotalPurchases) // for suppliers
 
 	//Can Get Total Otop Products Stocks & Name(DONE)
-	app.Post("/api/otop/add_products", controllers.CreateOtopProduct) // create new otop products (USED)
-	app.Get("/api/otop/products", controllers.GetOtopProducts)        // get all otop products (USED)
-	app.Delete("/api/otop/:id", controllers.DeleteOtopProduct)        // delete product using drop down (USED)
+	app.Post("/api/otop/add_products", controllers.CreateOtopProduct, func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{"message": "Total otop products"})
+	})
+	app.Get("/api/otop/products", controllers.GetOtopProducts) // get all otop products (USED)
+	app.Delete("/api/otop/:id", controllers.DeleteOtopProduct) // delete product using drop down (USED)
 	app.Put("/api/otop/:id", controllers.UpdateOtopProduct)
 	app.Get("/api/otop/total_quantity", controllers.GetOtopTotalQuantity)                                            // total of otop products quantity of all products
 	app.Get("/api/otop/total_quantity_name", controllers.GetOtopTotalQuantityName)                                   // diffrerent store name and total  quantity of products
