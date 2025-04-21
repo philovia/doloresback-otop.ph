@@ -8,13 +8,12 @@ import (
 
 type SoldItems struct {
 	gorm.Model
-	ID           uint        `gorm:"primaryKey;autoIncrement"`
-	ProductID    uint        `gorm:"not null"`
+	ProductID    uint         `gorm:"column:product_id" json:"product_id"`
 	Product      OtopProducts `gorm:"foreignKey:ProductID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;" json:"product"`
-	QuantitySold int64       `json:"quantity_sold"`
-	TotalAmount  float64     `json:"total_amount"`
-	SoldDate     time.Time   `json:"sold_date"`
-	SupplierID   uint        `gorm:"not null"` // SupplierID will be populated based on the OtopProduct
+	QuantitySold int64        `json:"quantity_sold"`
+	TotalAmount  float64      `json:"total_amount"`
+	SoldDate     time.Time    `json:"sold_date"`
+	SupplierID   uint         `gorm:"column:supplier_id" json:"supplier_id"`
 }
 
 func (s *SoldItems) BeforeCreate(tx *gorm.DB) (err error) {

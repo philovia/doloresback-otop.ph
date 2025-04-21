@@ -14,6 +14,7 @@ func UserRoutes(app *fiber.App) {
 	api.Post("/register", controllers.Register)
 	api.Post("/login", controllers.UnifiedLogin)
 	api.Post("/logout", controllers.Logout)
+	api.Put("/updateItem", controllers.UpdateOtopProductHandler)
 
 	// Admin-only routes(DONE)
 	supplier := app.Group("/supplier")

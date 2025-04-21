@@ -15,6 +15,53 @@ import (
 	// "gorm.io/gorm"
 )
 
+// This is the function that call the every handler it should be store on the controller folder
+func CallUpdateOtopProduct(p models.OtopProducts) error {
+	// Use GORM to update the product
+	result := database.DB.Model(&models.OtopProducts{}).Where("supplier_id = ? AND store_name = ?", p.SupplierID, p.StoreName).
+		Updates(models.OtopProducts{
+			Name:        p.Name,
+			Description: p.Description,
+			Price:       p.Price,
+			Category:    p.Category,
+			Quantity:    p.Quantity,
+		})
+
+	if result.Error != nil {
+		log.Println("Error executing update:", result.Error)
+		return result.Error
+	}
+
+	if result.RowsAffected == 0 {
+		return errors.New("no rows were updated, please check the supplier_id and store_name")
+	}
+
+	return nil
+}
+
+// Fiber handler that call all the fucntion from the contorller this will be put inside the handler folder
+func UpdateOtopProductHandler(c *fiber.Ctx) error {
+	var updateReq models.OtopProducts
+
+	// Parse the request body into the OtopProducts model
+	if err := c.BodyParser(&updateReq); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+		})
+	}
+
+	// Call the update function
+	if err := CallUpdateOtopProduct(updateReq); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to update product",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"message": "Product updated successfully",
+	})
+}
+
 func CreateOtopProduct(c *fiber.Ctx) error {
 	var otopProduct models.OtopProducts
 
@@ -279,55 +326,127 @@ func GetTotalPurchasedBySupplierID(c *fiber.Ctx) error {
 	})
 }
 
-// function for POS
+// the correct one to handle POS
 func RecordSoldItem(c *fiber.Ctx) error {
-	var soldItem models.SoldItems
-	var otopProduct models.OtopProducts
-	var supplier models.Supplier
+	var soldItems []models.SoldItems
+	var responses []map[string]interface{}
 
-	// Parse the request body
-	if err := c.BodyParser(&soldItem); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid sold item data"})
+	// Parse the request body (expecting a JSON array)
+	if err := c.BodyParser(&soldItems); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid sold items data",
+		})
 	}
 
-	// Fetch the product being sold
-	if err := database.DB.First(&otopProduct, soldItem.ProductID).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Product not found"})
+	for _, item := range soldItems {
+		var otopProduct models.OtopProducts
+
+		// Fetch product using ProductID
+		if err := database.DB.First(&otopProduct, item.ProductID).Error; err != nil {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"error": fmt.Sprintf("Product with ID %d not found", item.ProductID),
+			})
+		}
+
+		// Check stock
+		if otopProduct.Quantity < item.QuantitySold {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": fmt.Sprintf("Insufficient quantity for product ID %d", item.ProductID),
+			})
+		}
+
+		// Set total amount and sold date
+		item.TotalAmount = float64(item.QuantitySold) * otopProduct.Price
+		item.SoldDate = time.Now()
+
+		// Set SupplierID from product
+		item.SupplierID = otopProduct.SupplierID
+
+		// Reduce product stock
+		otopProduct.Quantity -= item.QuantitySold
+		if err := database.DB.Save(&otopProduct).Error; err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed to update product quantity",
+			})
+		}
+
+		// Save the sold item
+		if err := database.DB.Create(&item).Error; err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed to record sold item",
+			})
+		}
+
+		// Reload the sold item with preloaded product and supplier
+		var fullSoldItem models.SoldItems
+		if err := database.DB.
+			Preload("Product").
+			Preload("Product.Supplier").
+			First(&fullSoldItem, item.ID).Error; err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed to fetch full sold item",
+			})
+		}
+
+		// Append the full response
+		responses = append(responses, map[string]interface{}{
+			"soldItem": fullSoldItem,
+			"supplier": fullSoldItem.Product.Supplier,
+		})
 	}
 
-	// Fetch the supplier information (assuming the product has a SupplierID)
-	if err := database.DB.First(&supplier, otopProduct.SupplierID).Error; err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Supplier not found"})
-	}
-
-	// Check if sufficient quantity is available
-	if otopProduct.Quantity < soldItem.QuantitySold {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Insufficient product quantity"})
-	}
-
-	// Calculate the total amount for the sold item
-	soldItem.TotalAmount = float64(soldItem.QuantitySold) * otopProduct.Price
-
-	// Update the product quantity
-	otopProduct.Quantity -= soldItem.QuantitySold
-	if err := database.DB.Save(&otopProduct).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update product quantity"})
-	}
-
-	// Create the sold item record
-	if err := database.DB.Create(&soldItem).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to record sold item"})
-	}
-
-	// Include the supplier information in the response
-	response := map[string]interface{}{
-		"soldItem": soldItem,
-		"supplier": supplier,
-	}
-
-	// Return the sold item data along with supplier details
-	return c.Status(fiber.StatusCreated).JSON(response)
+	return c.Status(fiber.StatusCreated).JSON(responses)
 }
+
+// // function for POS
+// func RecordSoldItem(c *fiber.Ctx) error {
+// 	var soldItem models.SoldItems
+// 	var otopProduct models.OtopProducts
+// 	var supplier models.Supplier
+
+// 	// Parse the request body
+// 	if err := c.BodyParser(&soldItem); err != nil {
+// 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid sold item data"})
+// 	}
+
+// 	// Fetch the product being sold
+// 	if err := database.DB.First(&otopProduct, soldItem.ProductID).Error; err != nil {
+// 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Product not found"})
+// 	}
+
+// 	// Fetch the supplier information (assuming the product has a SupplierID)
+// 	if err := database.DB.First(&supplier, otopProduct.SupplierID).Error; err != nil {
+// 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Supplier not found"})
+// 	}
+
+// 	// Check if sufficient quantity is available
+// 	if otopProduct.Quantity < soldItem.QuantitySold {
+// 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Insufficient product quantity"})
+// 	}
+
+// 	// Calculate the total amount for the sold item
+// 	soldItem.TotalAmount = float64(soldItem.QuantitySold) * otopProduct.Price
+
+// 	// Update the product quantity
+// 	otopProduct.Quantity -= soldItem.QuantitySold
+// 	if err := database.DB.Save(&otopProduct).Error; err != nil {
+// 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update product quantity"})
+// 	}
+
+// 	// Create the sold item record
+// 	if err := database.DB.Create(&soldItem).Error; err != nil {
+// 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to record sold item"})
+// 	}
+
+// 	// Include the supplier information in the response
+// 	response := map[string]interface{}{
+// 		"soldItem": soldItem,
+// 		"supplier": supplier,
+// 	}
+
+// 	// Return the sold item data along with supplier details
+// 	return c.Status(fiber.StatusCreated).JSON(response)
+// }
 
 func GetAllSoldItems(c *fiber.Ctx) error {
 	var soldItems []models.SoldItems
