@@ -8,9 +8,9 @@ import (
 
 type SoldItems struct {
 	gorm.Model
-	ProductID    uint         `gorm:"column:product_id" json:"product_id"`
+	ProductID    uint         `gorm:"column:product_id" json:"id"`
 	Product      OtopProducts `gorm:"foreignKey:ProductID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;" json:"product"`
-	QuantitySold int64        `json:"quantity_sold"`
+	QuantitySold int64        `json:"quantity"`
 	TotalAmount  float64      `json:"total_amount"`
 	SoldDate     time.Time    `json:"sold_date"`
 	SupplierID   uint         `gorm:"column:supplier_id" json:"supplier_id"`
