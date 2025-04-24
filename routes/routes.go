@@ -65,6 +65,7 @@ func UserRoutes(app *fiber.App) {
 	app.Get("/api/otop/solds_products", controllers.GetAllSoldItems)                       // the total solds
 	app.Get("/api/otop/solds_products/:supplier_id", controllers.GetSoldItemsBySupplierID) // by supplier solds
 	app.Post("/api/otop/add_cart", controllers.AddToCartHandler)
+	app.Get("api/otop/most_solds", controllers.GetTopSoldProducts)
 	// Order Management for the admin with supplier (DONE)
 	admin := app.Group("/order")
 	admin.Post("/", controllers.CreateOrder)

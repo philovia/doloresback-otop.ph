@@ -15,6 +15,36 @@ import (
 	// "gorm.io/gorm"
 )
 
+func GetTopSoldProducts(c *fiber.Ctx) error {
+	type ProductSales struct {
+		ProductID    uint    `json:"product_id"`
+		Name         string  `json:"name"`
+		QuantitySold int     `json:"quantity_sold"`
+		Price        float64 `json:"price"`
+		TotalAmount  float64 `json:"total_amount"`
+	}
+
+	var topProducts []ProductSales
+
+	// Join SoldItems and Products, group by ProductID, and order by total quantity sold
+	if err := database.DB.Table("sold_items").
+		Select("sold_items.product_id, products.name, products.price, SUM(sold_items.quantity_sold) as quantity_sold, SUM(sold_items.quantity_sold * products.price) as total_amount").
+		Joins("JOIN products ON products.id = sold_items.product_id").
+		Group("sold_items.product_id, products.name, products.price").
+		Order("quantity_sold DESC").
+		Limit(3).
+		Scan(&topProducts).Error; err != nil {
+		log.Println("Error fetching top sold products:", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to fetch top sold products",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"top_sold_products": topProducts,
+	})
+}
+
 // This is the function that call the every handler it should be store on the controller folder
 func CallUpdateOtopProduct(p models.OtopProducts) error {
 	// Use GORM to update the product
