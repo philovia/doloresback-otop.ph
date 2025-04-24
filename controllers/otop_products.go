@@ -448,12 +448,47 @@ func RecordSoldItem(c *fiber.Ctx) error {
 // 	return c.Status(fiber.StatusCreated).JSON(response)
 // }
 
+// func GetAllSoldItems(c *fiber.Ctx) error {
+// 	var soldItems []models.SoldItems
+// 	if err := database.DB.Find(&soldItems).Error; err != nil {
+// 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Unable to fetch sold items"})
+// 	}
+// 	return c.Status(fiber.StatusOK).JSON(soldItems)
+// }
+
+// func GetAllSoldItems(c *fiber.Ctx) error {
+// 	var soldItems []models.SoldItems
+
+// 	// Fetch all sold items and preload related OtopProduct data
+// 	if err := database.DB.Preload("Product").Find(&soldItems).Error; err != nil {
+// 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+// 			"error": "Failed to fetch sold items",
+// 		})
+// 	}
+
+// 	return c.JSON(soldItems)
+// }
+
 func GetAllSoldItems(c *fiber.Ctx) error {
 	var soldItems []models.SoldItems
-	if err := database.DB.Find(&soldItems).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Unable to fetch sold items"})
+
+	// Fetch all sold items and preload product data
+	if err := database.DB.Preload("Product").Find(&soldItems).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to fetch sold items",
+		})
 	}
-	return c.Status(fiber.StatusOK).JSON(soldItems)
+
+	// Calculate overall amount sold
+	var overallAmountSold float64
+	for _, item := range soldItems {
+		overallAmountSold += float64(item.QuantitySold) * item.Product.Price
+	}
+
+	return c.JSON(fiber.Map{
+		"sold_items":          soldItems,
+		"overall_amount_sold": overallAmountSold,
+	})
 }
 
 // GetSoldItemsBySupplierID retrieves sold items filtered by SupplierID

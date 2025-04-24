@@ -9,12 +9,13 @@ import (
 
 	// "gopkg.in/gomail.v2"
 
-	// "gopkg.in/gomail.v2"
+	"gopkg.in/gomail.v2"
 	"gorm.io/gorm"
 )
 
 func CreateSupplier(c *fiber.Ctx) error {
 	var supplier models.Supplier
+
 	// Parse the supplier data from the request body
 	if err := c.BodyParser(&supplier); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
@@ -25,9 +26,47 @@ func CreateSupplier(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create supplier"})
 	}
 
+	// Send email notification
+	m := gomail.NewMessage()
+	m.SetHeader("From", "giemacazar@gmail.com") // Your email
+	m.SetHeader("To", supplier.Email)           // Supplier's email from the request
+	m.SetHeader("Subject", "Supplier Account Created")
+	m.SetBody("text/plain", "Hello "+supplier.StoreName+",\n\nYour supplier account has been successfully created. Welcome to the OTOP.PH platform!")
+
+	d := gomail.NewDialer("smtp.gmail.com", 587, "giemacazar@gmail.com", "wtga mbuz ooxc ymzs") // Replace with env vars in production
+
+	// Attempt to send the email
+	if err := d.DialAndSend(m); err != nil {
+		// You can log the error but still return a success response if supplier creation succeeded
+		// Optionally, return a warning to the frontend
+		return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+			"message": "Supplier created, but email notification failed",
+			"error":   err.Error(),
+		})
+	}
+
 	// Return success response
-	return c.JSON(supplier)
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+		"message":  "Supplier created and email notification sent",
+		"supplier": supplier,
+	})
 }
+
+// func CreateSupplier(c *fiber.Ctx) error {
+// 	var supplier models.Supplier
+// 	// Parse the supplier data from the request body
+// 	if err := c.BodyParser(&supplier); err != nil {
+// 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+// 	}
+
+// 	// Save supplier to the database
+// 	if err := database.DB.Create(&supplier).Error; err != nil {
+// 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create supplier"})
+// 	}
+
+// 	// Return success response
+// 	return c.JSON(supplier)
+// }
 
 // Register handles user registration and sends a notification email
 

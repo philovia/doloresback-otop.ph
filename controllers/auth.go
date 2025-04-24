@@ -19,18 +19,32 @@ func Register(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid user data"})
 	}
 
-	// Check if the email is already registered
+	// Check if the email (username) is already registered
 	var existingUser models.User
 	if err := database.DB.Where("username = ?", user.UserName).First(&existingUser).Error; err == nil {
+		// Send notification that email is already registered
+		m := gomail.NewMessage()
+		m.SetHeader("From", "giemacazar@gmail.com")
+		m.SetHeader("To", user.Email)
+		m.SetHeader("Subject", "Registration Attempt Failed")
+		m.SetBody("text/plain", "Hello,\n\nAn account with this email/username already exists. If this wasn't you, please ignore this message.")
+
+		d := gomail.NewDialer("smtp.gmail.com", 587, "giemacazar@gmail.com", "wtga mbuz ooxc ymzs")
+
+		// Attempt to send the email
+		if err := d.DialAndSend(m); err != nil {
+			// Log error or handle it
+		}
+
 		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "Email is already registered"})
 	}
 
-	// Check if the role is either "admin" or "cashier"
+	// Validate the role
 	if user.Role != "admin" && user.Role != "cashier" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid role. Only 'admin' and 'cashier' roles are allowed."})
 	}
 
-	// Validate the username based on the role
+	// Validate username format
 	if user.Role == "admin" && !strings.HasSuffix(user.UserName, "_admin") {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Admin username must end with '_admin'"})
 	}
@@ -38,12 +52,12 @@ func Register(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Cashier username must end with '_cashier'"})
 	}
 
-	// Save the user to the database
+	// Save user
 	if err := database.DB.Create(&user).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Error saving user"})
 	}
 
-	// Send email notification
+	// Send registration success email
 	m := gomail.NewMessage()
 	m.SetHeader("From", "giemacazar@gmail.com")
 	m.SetHeader("To", user.Email)
@@ -52,13 +66,59 @@ func Register(c *fiber.Ctx) error {
 
 	d := gomail.NewDialer("smtp.gmail.com", 587, "giemacazar@gmail.com", "wtga mbuz ooxc ymzs")
 
-	// Send the email
 	if err := d.DialAndSend(m); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Error sending registration email"})
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"message": "User registered successfully"})
 }
+
+// func Register(c *fiber.Ctx) error {
+// 	var user models.User
+// 	if err := c.BodyParser(&user); err != nil {
+// 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid user data"})
+// 	}
+
+// 	// Check if the email is already registered
+// 	var existingUser models.User
+// 	if err := database.DB.Where("username = ?", user.UserName).First(&existingUser).Error; err == nil {
+// 		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "Email is already registered"})
+// 	}
+
+// 	// Check if the role is either "admin" or "cashier"
+// 	if user.Role != "admin" && user.Role != "cashier" {
+// 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid role. Only 'admin' and 'cashier' roles are allowed."})
+// 	}
+
+// 	// Validate the username based on the role
+// 	if user.Role == "admin" && !strings.HasSuffix(user.UserName, "_admin") {
+// 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Admin username must end with '_admin'"})
+// 	}
+// 	if user.Role == "cashier" && !strings.HasSuffix(user.UserName, "_cashier") {
+// 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Cashier username must end with '_cashier'"})
+// 	}
+
+// 	// Save the user to the database
+// 	if err := database.DB.Create(&user).Error; err != nil {
+// 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Error saving user"})
+// 	}
+
+// 	// Send email notification
+// 	m := gomail.NewMessage()
+// 	m.SetHeader("From", "giemacazar@gmail.com")
+// 	m.SetHeader("To", user.Email)
+// 	m.SetHeader("Subject", "Registration Confirmation")
+// 	m.SetBody("text/plain", "Hello "+user.UserName+",\n\nYour registration was successful. Welcome to our platform!")
+
+// 	d := gomail.NewDialer("smtp.gmail.com", 587, "giemacazar@gmail.com", "wtga mbuz ooxc ymzs")
+
+// 	// Send the email
+// 	if err := d.DialAndSend(m); err != nil {
+// 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Error sending registration email"})
+// 	}
+
+//		return c.Status(fiber.StatusCreated).JSON(fiber.Map{"message": "User registered successfully"})
+//	}
 func UnifiedLogin(c *fiber.Ctx) error {
 	var creds struct {
 		Email    string `json:"email"`

@@ -184,7 +184,6 @@ func GetSupplierOrders(c *fiber.Ctx) error {
 	// Return the fetched orders
 	return c.JSON(orders)
 }
-
 func ConfirmOrders(c *fiber.Ctx) error {
 	supplierID := c.Locals("supplier_id").(uint)
 	id := c.Params("id")
@@ -202,6 +201,26 @@ func ConfirmOrders(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Unauthorized to confirm this order"})
 	}
 
+	// ✅ Fetch the associated product
+	var product models.Product
+	if err := database.DB.First(&product, order.ProductID).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Associated product not found"})
+	}
+
+	// ✅ Check stock before reducing
+	if product.Quantity < order.Quantity {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Insufficient stock to confirm the order"})
+	}
+
+	// ✅ Subtract order quantity from product stock
+	product.Quantity -= order.Quantity
+
+	// ✅ Save updated product
+	if err := database.DB.Save(&product).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update product quantity"})
+	}
+
+	// ✅ Update order status
 	order.Status = "verified"
 	order.UpdatedAt = time.Now()
 
@@ -211,6 +230,33 @@ func ConfirmOrders(c *fiber.Ctx) error {
 
 	return c.JSON(order)
 }
+
+// func ConfirmOrders(c *fiber.Ctx) error {
+// 	supplierID := c.Locals("supplier_id").(uint)
+// 	id := c.Params("id")
+
+// 	var order models.Order
+// 	if err := database.DB.First(&order, id).Error; err != nil {
+// 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Order not found"})
+// 	}
+
+// 	if order.Status != "pending" {
+// 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Order already confirmed or completed"})
+// 	}
+
+// 	if supplierID != order.SupplierID {
+// 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "Unauthorized to confirm this order"})
+// 	}
+
+// 	order.Status = "verified"
+// 	order.UpdatedAt = time.Now()
+
+// 	if err := database.DB.Save(&order).Error; err != nil {
+// 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to confirm order"})
+// 	}
+
+// 	return c.JSON(order)
+// }
 
 func GetSupplierOrder(c *fiber.Ctx) error {
 	supplierID := c.Locals("supplier_id").(uint)
