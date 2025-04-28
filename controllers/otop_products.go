@@ -723,3 +723,417 @@ func POSController(c *fiber.Ctx) error {
 	// Return the receipt response as JSON
 	return c.JSON(receipt)
 }
+
+type SummaryRequest struct {
+	IntervalType string `json:"interval" validate:"required,oneof=daily weekly monthly yearly"`
+}
+
+func GetSalesSummary(c *fiber.Ctx) error {
+	var req SummaryRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+		})
+	}
+
+	switch req.IntervalType {
+	case "daily":
+		return getDailySummary(c)
+	case "weekly":
+		return getWeeklySummary(c)
+	case "monthly":
+		return getMonthlySummary(c)
+	case "yearly":
+		return getYearlySummary(c)
+	default:
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Interval must be daily, weekly, monthly, or yearly",
+		})
+	}
+}
+
+// get data for daily
+func getDailySummary(c *fiber.Ctx) error {
+	now := time.Now()
+	weekday := int(now.Weekday())
+	if weekday == 0 {
+		// Sunday, move to last Monday
+		now = now.AddDate(0, 0, -6)
+	}
+
+	// Start on Monday
+	startOfWeek := now.AddDate(0, 0, -(int(now.Weekday()) - 1))
+	startOfWeek = time.Date(startOfWeek.Year(), startOfWeek.Month(), startOfWeek.Day(), 0, 0, 0, 0, startOfWeek.Location())
+
+	endOfWeek := startOfWeek.AddDate(0, 0, 5).Add(24*time.Hour - time.Nanosecond) // Saturday night
+
+	var soldItems []models.SoldItems
+	if err := database.DB.Preload("Product").Where("created_at BETWEEN ? AND ?", startOfWeek, endOfWeek).Find(&soldItems).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to fetch sold items",
+		})
+	}
+
+	// Group by Day
+	dailySales := map[string]float64{
+		"Monday":    0,
+		"Tuesday":   0,
+		"Wednesday": 0,
+		"Thursday":  0,
+		"Friday":    0,
+		"Saturday":  0,
+	}
+
+	for _, item := range soldItems {
+		day := item.CreatedAt.Weekday().String()
+		if day != "Sunday" {
+			dayName := string(day)
+			dailySales[dayName] += float64(item.QuantitySold) * item.Product.Price
+		}
+	}
+
+	return c.JSON(dailySales)
+}
+
+// get data for the week
+
+func getWeeklySummary(c *fiber.Ctx) error {
+	now := time.Now()
+	startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+
+	var soldItems []models.SoldItems
+	if err := database.DB.Preload("Product").Where("created_at >= ?", startOfMonth).Find(&soldItems).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to fetch sold items",
+		})
+	}
+
+	weeklySales := map[string]float64{
+		"Week 1": 0,
+		"Week 2": 0,
+		"Week 3": 0,
+		"Week 4": 0,
+		"Week 5": 0,
+	}
+
+	for _, item := range soldItems {
+		day := item.CreatedAt.Day()
+		var week string
+		switch {
+		case day >= 1 && day <= 7:
+			week = "Week 1"
+		case day >= 8 && day <= 14:
+			week = "Week 2"
+		case day >= 15 && day <= 21:
+			week = "Week 3"
+		case day >= 22 && day <= 28:
+			week = "Week 4"
+		default:
+			week = "Week 5"
+		}
+		weeklySales[week] += float64(item.QuantitySold) * item.Product.Price
+	}
+
+	return c.JSON(weeklySales)
+}
+
+// get data for the month
+func getMonthlySummary(c *fiber.Ctx) error {
+	now := time.Now()
+	currentYear := now.Year()
+
+	var soldItems []models.SoldItems
+	if err := database.DB.Preload("Product").Where("EXTRACT(YEAR FROM created_at) = ?", currentYear).Find(&soldItems).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to fetch sold items",
+		})
+	}
+
+	monthlySales := map[string]float64{
+		"January":   0,
+		"February":  0,
+		"March":     0,
+		"April":     0,
+		"May":       0,
+		"June":      0,
+		"July":      0,
+		"August":    0,
+		"September": 0,
+		"October":   0,
+		"November":  0,
+		"December":  0,
+	}
+
+	for _, item := range soldItems {
+		month := item.CreatedAt.Month().String()
+		monthlySales[month] += float64(item.QuantitySold) * item.Product.Price
+	}
+
+	return c.JSON(monthlySales)
+}
+
+// yearly function for sold items chat
+func getYearlySummary(c *fiber.Ctx) error {
+	now := time.Now()
+	startYear := now.Year() - 4 // last 4 years + current
+
+	var soldItems []models.SoldItems
+	if err := database.DB.Preload("Product").Where("EXTRACT(YEAR FROM created_at) >= ?", startYear).Find(&soldItems).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to fetch sold items",
+		})
+	}
+
+	yearlySales := make(map[int]float64)
+
+	for i := startYear; i <= now.Year(); i++ {
+		yearlySales[i] = 0
+	}
+
+	for _, item := range soldItems {
+		year := item.CreatedAt.Year()
+		if _, ok := yearlySales[year]; ok {
+			yearlySales[year] += float64(item.QuantitySold) * item.Product.Price
+		}
+	}
+
+	return c.JSON(yearlySales)
+}
+
+// supplier get summary
+
+type SupplierSalesRequest struct {
+	IntervalType string `json:"interval" validate:"required,oneof=daily weekly monthly yearly"`
+	SupplierID   uint   `json:"supplier_id" validate:"required"`
+}
+
+func GetSupplierSalesSummary(c *fiber.Ctx) error {
+	var req SupplierSalesRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+		})
+	}
+
+	switch req.IntervalType {
+	case "daily":
+		return getSupplierDailySummary(c, req.SupplierID)
+	case "weekly":
+		return getSupplierWeeklySummary(c, req.SupplierID)
+	case "monthly":
+		return getSupplierMonthlySummary(c, req.SupplierID)
+	case "yearly":
+		return getSupplierYearlySummary(c, req.SupplierID)
+	default:
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Interval must be daily, weekly, monthly, or yearly",
+		})
+	}
+}
+
+// Get daily sales for a specific supplier
+func getSupplierDailySummary(c *fiber.Ctx, supplierID uint) error {
+	now := time.Now()
+	weekday := int(now.Weekday())
+	if weekday == 0 {
+		// Sunday, move to last Monday
+		now = now.AddDate(0, 0, -6)
+	}
+
+	// Start on Monday
+	startOfWeek := now.AddDate(0, 0, -(int(now.Weekday()) - 1))
+	startOfWeek = time.Date(startOfWeek.Year(), startOfWeek.Month(), startOfWeek.Day(), 0, 0, 0, 0, startOfWeek.Location())
+
+	endOfWeek := startOfWeek.AddDate(0, 0, 5).Add(24*time.Hour - time.Nanosecond) // Saturday night
+
+	var soldItems []models.SoldItems
+	if err := database.DB.Preload("Product").Where("sold_date BETWEEN ? AND ? AND supplier_id = ?", startOfWeek, endOfWeek, supplierID).Find(&soldItems).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to fetch sold items for the supplier",
+		})
+	}
+
+	// Group by Day
+	dailySales := map[string]float64{
+		"Monday":    0,
+		"Tuesday":   0,
+		"Wednesday": 0,
+		"Thursday":  0,
+		"Friday":    0,
+		"Saturday":  0,
+	}
+
+	for _, item := range soldItems {
+		day := item.SoldDate.Weekday().String()
+		if day != "Sunday" {
+			dayName := string(day)
+			dailySales[dayName] += float64(item.QuantitySold) * item.TotalAmount
+		}
+	}
+
+	return c.JSON(dailySales)
+}
+
+// Get weekly sales for a specific supplier
+func getSupplierWeeklySummary(c *fiber.Ctx, supplierID uint) error {
+	now := time.Now()
+	startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+
+	var soldItems []models.SoldItems
+	if err := database.DB.Preload("Product").Where("sold_date >= ? AND supplier_id = ?", startOfMonth, supplierID).Find(&soldItems).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to fetch sold items for the supplier",
+		})
+	}
+
+	weeklySales := map[string]float64{
+		"Week 1": 0,
+		"Week 2": 0,
+		"Week 3": 0,
+		"Week 4": 0,
+		"Week 5": 0,
+	}
+
+	for _, item := range soldItems {
+		day := item.SoldDate.Day()
+		var week string
+		switch {
+		case day >= 1 && day <= 7:
+			week = "Week 1"
+		case day >= 8 && day <= 14:
+			week = "Week 2"
+		case day >= 15 && day <= 21:
+			week = "Week 3"
+		case day >= 22 && day <= 28:
+			week = "Week 4"
+		default:
+			week = "Week 5"
+		}
+		weeklySales[week] += float64(item.QuantitySold) * item.TotalAmount
+	}
+
+	return c.JSON(weeklySales)
+}
+
+// Get monthly sales for a specific supplier
+func getSupplierMonthlySummary(c *fiber.Ctx, supplierID uint) error {
+	now := time.Now()
+	currentYear := now.Year()
+
+	var soldItems []models.SoldItems
+	if err := database.DB.Preload("Product").Where("EXTRACT(YEAR FROM sold_date) = ? AND supplier_id = ?", currentYear, supplierID).Find(&soldItems).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to fetch sold items for the supplier",
+		})
+	}
+
+	monthlySales := map[string]float64{
+		"January":   0,
+		"February":  0,
+		"March":     0,
+		"April":     0,
+		"May":       0,
+		"June":      0,
+		"July":      0,
+		"August":    0,
+		"September": 0,
+		"October":   0,
+		"November":  0,
+		"December":  0,
+	}
+
+	for _, item := range soldItems {
+		month := item.SoldDate.Month().String()
+		monthlySales[month] += float64(item.QuantitySold) * item.TotalAmount
+	}
+
+	return c.JSON(monthlySales)
+}
+
+// Get yearly sales for a specific supplier
+func getSupplierYearlySummary(c *fiber.Ctx, supplierID uint) error {
+	now := time.Now()
+	startYear := now.Year() - 4 // last 4 years + current
+
+	var soldItems []models.SoldItems
+	if err := database.DB.Preload("Product").Where("EXTRACT(YEAR FROM sold_date) >= ? AND supplier_id = ?", startYear, supplierID).Find(&soldItems).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to fetch sold items for the supplier",
+		})
+	}
+
+	yearlySales := make(map[int]float64)
+
+	for i := startYear; i <= now.Year(); i++ {
+		yearlySales[i] = 0
+	}
+
+	for _, item := range soldItems {
+		year := item.SoldDate.Year()
+		if _, ok := yearlySales[year]; ok {
+			yearlySales[year] += float64(item.QuantitySold) * item.TotalAmount
+		}
+	}
+
+	return c.JSON(yearlySales)
+}
+
+// fetch data using date
+
+type DateRange struct {
+	StartDate string `json:"start_date"`
+	EndDate   string `json:"end_date"`
+}
+
+func GetSoldItemsByDateRangePost(c *fiber.Ctx) error {
+	var dateRange DateRange
+	var soldItems []models.SoldItems
+
+	// Parse JSON body
+	if err := c.BodyParser(&dateRange); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+		})
+	}
+
+	db := database.DB
+
+	// If both start and end date are provided
+	if dateRange.StartDate != "" && dateRange.EndDate != "" {
+		startDate, err1 := time.Parse("2006-01-02", dateRange.StartDate)
+		endDate, err2 := time.Parse("2006-01-02", dateRange.EndDate)
+		if err1 != nil || err2 != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "Invalid date format. Please use YYYY-MM-DD.",
+			})
+		}
+
+		endDate = endDate.Add(24 * time.Hour)
+
+		if err := db.Preload("Product").
+			Where("created_at BETWEEN ? AND ?", startDate, endDate).
+			Find(&soldItems).Error; err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed to fetch sold items",
+			})
+		}
+	} else {
+		// No date provided, fetch all
+		if err := db.Preload("Product").Find(&soldItems).Error; err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed to fetch sold items",
+			})
+		}
+	}
+
+	// Calculate overall amount sold
+	var overallAmountSold float64
+	for _, item := range soldItems {
+		overallAmountSold += float64(item.QuantitySold) * item.Product.Price
+	}
+
+	return c.JSON(fiber.Map{
+		"sold_items":          soldItems,
+		"overall_amount_sold": overallAmountSold,
+	})
+}

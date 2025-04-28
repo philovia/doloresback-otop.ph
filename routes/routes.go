@@ -80,4 +80,7 @@ func UserRoutes(app *fiber.App) {
 	app.Get("/api/products/supplier/:supplier_id", controllers.GetProductsByStore)
 
 	app.Post("/api/otop/POS", controllers.POSController)
+	app.Post("/api/otop/getSummary", controllers.GetSalesSummary)
+	app.Post("/api/otop/supplierSummary", controllers.GetSupplierSalesSummary)
+	app.Post("/api/otop/getByDate", controllers.GetSoldItemsByDateRangePost)
 }
